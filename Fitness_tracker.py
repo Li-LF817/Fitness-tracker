@@ -19,7 +19,7 @@ def get_targets(weight, delta=0):
     }
 
 # --- 2. 侧边栏：状态判定 ---
-st.sidebar.header("📊 今日状态矩阵")
+st.sidebar.header("📊 今日状态")
 train_level = st.sidebar.select_slider("今日运动", options=["休息/不训练", "正常训练", "高强度/冲重"], value="休息/不训练")
 study_level = st.sidebar.select_slider("今日科研", options=["轻松/不科研", "正常科研", "高压科研/冲刺"], value="正常科研")
 
@@ -35,10 +35,10 @@ else: delta = -0.1
 targets = get_targets(USER_WEIGHT, delta)
 
 # --- 3. 饮食录入区 ---
-st.title("🍎 饮食决策看板")
+st.title("饮食摄入管理")
 
 # 可选：分餐明细（选填）
-with st.expander("📝 可选：分餐详细记录", expanded=False):
+with st.expander("可选：分餐详细记录", expanded=False):
     st.caption("如果你填写了分餐明细，可以点击下方的按钮同步到今日总量。")
     tabs = st.tabs(["🌅 早餐", "☀️ 午餐", "🌙 晚餐", "🍎 加餐"])
     
@@ -67,10 +67,10 @@ with st.expander("📝 可选：分餐详细记录", expanded=False):
         s_p = c3.number_input("加餐蛋白(g)", min_value=0.0, key="s_p")
         s_f = c4.number_input("加餐脂肪(g)", min_value=0.0, key="s_f")
 
-    use_meal_details = st.button("🔄 将上述分餐加总同步到下方总量")
+    use_meal_details = st.button("将上述分餐加总同步到下方总量")
 
 # 核心：今日总量记录（必填）
-st.subheader("🏁 今日摄入总计 (必填项)")
+st.subheader("今日摄入总计")
 col1, col2, col3, col4 = st.columns(4)
 
 # 逻辑：如果点击了同步，则默认值为分餐之和
@@ -86,7 +86,7 @@ total_f = col4.number_input("总脂肪(g)", min_value=0.0, value=init_f)
 
 # --- 4. 实时预算与建议 ---
 st.divider()
-st.header("⚖️ 剩余预算与决策建议")
+st.header("⚖️ 剩余饮食摄入预算")
 
 rem_c = targets['c_target'] - total_c
 rem_p = targets['p_target'] - total_p
