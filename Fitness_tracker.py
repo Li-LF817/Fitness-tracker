@@ -19,7 +19,7 @@ def get_targets(weight, delta=0):
     }
 
 # --- 2. 侧边栏：带预判的决策矩阵 ---
-st.sidebar.header("📊 状态决策矩阵")
+st.sidebar.header("📊 状态输入")
 
 # 定义状态对应的单项描述（为了提示用户）
 train_options = {
@@ -78,7 +78,7 @@ st.sidebar.metric("合成碳水系数", f"{targets['actual_coeff']:.1f}x", f"{de
 st.sidebar.write(f"建议摄入：**{targets['c_target']:.1f}g**")
 
 # --- 3. 饮食录入区 ---
-st.title("🏋️‍♂️ Alpha-Tracker 决策中心")
+st.title("🏋️‍♂️ Alpha-Tracker 摄入监测系统")
 
 # 分餐记录（选填）
 with st.expander("📝 分餐明细记录", expanded=False):
@@ -93,14 +93,14 @@ with st.expander("📝 分餐明细记录", expanded=False):
             meal_data[f"{m}_p"] = c3.number_input(f"蛋白(g)", min_value=0.0, key=f"{m}_p")
             meal_data[f"{m}_f"] = c4.number_input(f"脂肪(g)", min_value=0.0, key=f"{m}_f")
 
-    if st.button("🔄 同步分餐至今日总量"):
+    if st.button("同步分餐至今日总量"):
         st.session_state.total_k = sum(meal_data[f"{m}_k"] for m in meals)
         st.session_state.total_c = sum(meal_data[f"{m}_c"] for m in meals)
         st.session_state.total_p = sum(meal_data[f"{m}_p"] for m in meals)
         st.session_state.total_f = sum(meal_data[f"{m}_f"] for m in meals)
 
 # 核心总量记录
-st.subheader("🏁 今日摄入总计 (保存依据)")
+st.subheader("今日摄入总计")
 c1, c2, c3, c4 = st.columns(4)
 total_k = c1.number_input("总热量(kcal)", min_value=0.0, key="total_k_input", value=st.session_state.get('total_k', 0.0))
 total_c = c2.number_input("总碳水(g)", min_value=0.0, key="total_c_input", value=st.session_state.get('total_c', 0.0))
