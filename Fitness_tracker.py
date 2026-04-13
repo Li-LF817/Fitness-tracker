@@ -30,6 +30,7 @@ study_stress = st.sidebar.select_slider(
     value="中等"
 )
 
+# 动态系数映射逻辑
 delta = 0
 if train_status == "高强度/冲重": delta += 0.5
 if study_stress == "高压科研": delta += 0.3
@@ -39,7 +40,7 @@ targets = calculate_targets(USER_WEIGHT, delta)
 
 # --- 主界面 ---
 st.title("🍎 个人饮食营养监控看板")
-st.subheader(f"💡 今日建议：碳水应摄入 {targets['c_target']:.1f}g (当前倍数: {3.0+delta}x)")
+st.subheader(f"💡 今日建议：碳水应摄入 {targets['c_target']:.1f}g (当前系数: 3.0x + {delta}x)")
 
 with st.form("输入表单"):
     col1, col2, col3, col4 = st.columns(4)
@@ -64,16 +65,20 @@ if submitted:
     else:
         st.success("✅ 脂肪控制达标")
 
-    # 数据保存
+    # 数据保存逻辑
     new_data = {
         "日期": str(date.today()),
-        "总热量": in_kcal, "碳水": in_carb, "蛋白质": in_pro, "脂肪": in_fat,
-        "碳水目标": targets['c_target']
+        "总热量": in_kcal, 
+        "碳水": in_carb, 
+        "蛋白质": in_pro, 
+        "脂肪": in_fat,
+        "碳水目标": targets['c_target'],
+        "动态调整系数": f"3.0x + {delta}x"  # 记录调整详情
     }
     df_new = pd.DataFrame([new_data])
     file_exists = os.path.isfile('diet_log.csv')
     df_new.to_csv('diet_log.csv', mode='a', index=False, header=not file_exists)
-    st.toast("数据已保存！")
+    st.toast("数据已成功保存！")
 
 # --- 历史管理 ---
 st.divider()
@@ -82,10 +87,11 @@ st.header("📖 历史数据管理")
 if os.path.isfile('diet_log.csv'):
     history_df = pd.read_csv('diet_log.csv')
     
-    # 关键：强制纠正旧版英文表头
+    # 强制纠正旧版所有可能的英文表头
     column_mapping = {
         "Date": "日期", "Kcal": "总热量", "Carb": "碳水", 
-        "Protein": "蛋白质", "Fat": "脂肪", "Carb_Target": "碳水目标"
+        "Protein": "蛋白质", "Fat": "脂肪", "Carb_Target": "碳水目标",
+        "Delta": "动态调整系数", "delta": "动态调整系数"
     }
     history_df.rename(columns=column_mapping, inplace=True)
 
