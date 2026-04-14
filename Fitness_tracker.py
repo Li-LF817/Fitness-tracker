@@ -3,55 +3,83 @@ import pandas as pd
 import os
 from datetime import date
 
-st.set_page_config(page_title="Alpha-Tracker 营养助手", layout="wide")
+st.set_page_config(page_title="Alpha-Tracker 生理建模版", layout="wide")
 
-# --- 1. 核心逻辑与目标计算 ---
-USER_WEIGHT = 75.0 
+# --- 1. 身体数据与 TDEE 计算逻辑 ---
+st.sidebar.header("👤 个人身体档案")
+gender = st.sidebar.radio("性别", ["男", "女"], index=0)
+age = st.sidebar.number_input("年龄", min_value=15, max_value=80, value=24)
+height = st.sidebar.number_input("身高 (cm)", min_value=140, max_value=210, value=183)
+weight = st.sidebar.number_input("体重 (kg)", min_value=40.0, max_value=150.0, value=75.0)
 
-def get_targets(weight, delta=0):
-    final_coeff = 3.0 + delta
-    return {
-        "p_target": weight * 1.5,
-        "p_range": (weight * 1.4, weight * 1.6),
-        "f_max": weight * 0.6,
-        "c_target": final_coeff * weight,
-        "actual_coeff": final_coeff
-    }
+st.sidebar.divider()
+st.sidebar.header("⚡ 能量消耗设定")
+# 活动水平系数 (PAL)
+pal_options = {
+    "久坐 (几乎不运动)": 1.2,
+    "轻度活跃 (每周1-2次)": 1.375,
+    "中度活跃 (每周3-5次)": 1.55,
+    "高度活跃 (每日运动)": 1.725
+}
+pal_val = st.sidebar.selectbox("日常活动水平", list(pal_options.keys()), index=2)
+pal = pal_options[pal_val]
+
+# 热量缺口设定
+deficit = st.sidebar.slider("目标热量缺口 (kcal)", 0, 800, 400, step=50)
+
+# 计算 BMR (Mifflin-St Jeor)
+if gender == "男":
+    bmr = 10 * weight + 6.25 * height - 5 * age + 5
+else:
+    bmr = 10 * weight + 6.25 * height - 5 * age - 161
+
+tdee = bmr * pal
+daily_target_kcal = tdee - deficit
+
+# --- 2. 自动推导营养基准 ---
+# 蛋白质固定 1.5x，脂肪固定 0.6x
+p_gram = weight * 1.5
+f_gram = weight * 0.6
+p_kcal = p_gram * 4
+f_kcal = f_gram * 9
+
+# 剩余热量全给碳水，推导基准系数
+c_kcal_baseline = daily_target_kcal - p_kcal - f_kcal
+c_gram_baseline = c_kcal_baseline / 4
+base_coeff = c_gram_baseline / weight # 自动生成的基准系数
+
+# --- 3. 状态决策矩阵 (Delta 调整) ---
+st.sidebar.divider()
+st.sidebar.header("📊 今日状态微调")
+train_level = st.sidebar.select_slider("运动强度", options=["休息/不训练", "正常训练", "高强度/冲重"], value="休息/不训练")
+study_level = st.sidebar.select_slider("科研状态", options=["轻松/不科研", "正常科研", "高压科研/冲刺"], value="正常科研")
+
+delta = 0.0
+if study_level == "正常科研" and train_level == "休息/不训练": delta = 0.0
+elif study_level == "正常科研" and train_level == "正常训练": delta = 0.2
+elif study_level == "高压科研/冲刺" and train_level == "高强度/冲重": delta = 0.5
+elif study_level == "高压科研/冲刺" or train_level == "高强度/冲重": delta = 0.3
+elif study_level == "轻松/不科研" and train_level == "休息/不训练": delta = -0.3
+else: delta = -0.1
+
+final_coeff = base_coeff + delta
+c_target_final = final_coeff * weight
+
+# 侧边栏看板
+st.sidebar.divider()
+st.sidebar.metric("TDEE (总消耗)", f"{tdee:.0f} kcal")
+st.sidebar.metric("建议摄入系数", f"{final_coeff:.2f}x", f"{delta:+.1f}x (状态调整)")
+
+# --- 4. 饮食决策中心 ---
+st.title(f"🚀 Alpha-Tracker 决策中心")
+st.info(f"💡 根据身体档案，你的 BMR 为 **{bmr:.0f}**，TDEE 为 **{tdee:.0f}**。设定缺口 **{deficit}** kcal 后，今日建议摄入总热量：**{daily_target_kcal:.0f}** kcal。")
 
 # 辅助函数：将 None 转换为 0.0
 def nz(value):
     return value if value is not None else 0.0
 
-# --- 2. 日期与状态决策 (系统核心) ---
-st.sidebar.header("📅 日期与状态设定")
-# 允许手动调整日期
-target_date = st.sidebar.date_input("选择记录日期", date.today())
-st.sidebar.divider()
-
-train_options = {"休息/不训练": 0.0, "正常训练": 0.2, "高强度/冲重": 0.4}
-study_options = {"轻松/不科研": -0.2, "正常科研": 0.0, "高压科研/冲刺": 0.3}
-
-train_val = st.sidebar.select_slider("今日运动强度", options=list(train_options.keys()), value="休息/不训练")
-study_val = st.sidebar.select_slider("今日科研状态", options=list(study_options.keys()), value="正常科研")
-
-# 复合逻辑计算 Delta
-delta = 0.0
-if study_val == "正常科研" and train_val == "休息/不训练": delta = 0.0
-elif study_val == "正常科研" and train_val == "正常训练": delta = 0.2
-elif study_val == "高压科研/冲刺" and train_val == "高强度/冲重": delta = 0.5
-elif study_val == "高压科研/冲刺" or train_val == "高强度/冲重": delta = 0.3
-elif study_val == "轻松/不科研" and train_val == "休息/不训练": delta = -0.3
-else: delta = -0.1
-
-targets = get_targets(USER_WEIGHT, delta)
-st.sidebar.metric("碳水系数", f"{targets['actual_coeff']:.1f}x", f"{delta:+.1f}x")
-
-# --- 3. 饮食决策中心 ---
-st.title(f"🏋️‍♂️ 饮食决策中心 ({target_date})")
-
-# 分餐记录 (仅作为今日总量的辅助计算器)
-with st.expander("📝 开启分餐计算器 (辅助加总，不直接存档)", expanded=False):
-    tabs = st.tabs(["🌅 早餐", "☀️ 午餐", "🌙 晚餐", "🍎 加餐"])
+with st.expander("📝 开启分餐辅助计算器", expanded=False):
+    tabs = st.tabs(["🌅 早", "☀️ 午", "🌙 晚", "🍎 加"])
     meals = ["b", "l", "d", "s"]
     meal_data = {}
     for i, m in enumerate(meals):
@@ -62,72 +90,52 @@ with st.expander("📝 开启分餐计算器 (辅助加总，不直接存档)", 
             meal_data[f"{m}_p"] = c3.number_input(f"蛋白", value=None, placeholder="0.0", key=f"{m}_p")
             meal_data[f"{m}_f"] = c4.number_input(f"脂肪", value=None, placeholder="0.0", key=f"{m}_f")
 
-    if st.button("🔢 汇总分餐数据至今日总量"):
+    if st.button("🔢 汇总并更新下方总量"):
         st.session_state.total_k = sum(nz(meal_data[f"{m}_k"]) for m in meals)
         st.session_state.total_c = sum(nz(meal_data[f"{m}_c"]) for m in meals)
         st.session_state.total_p = sum(nz(meal_data[f"{m}_p"]) for m in meals)
         st.session_state.total_f = sum(nz(meal_data[f"{m}_f"]) for m in meals)
         st.rerun()
 
-# 核心总量记录 (必须项)
-st.subheader("🏁 今日摄入总计")
-c1, c2, c3, c4 = st.columns(4)
-total_k = c1.number_input("总热量(kcal)", value=st.session_state.get('total_k', None), placeholder="必填", key="tk")
-total_c = c2.number_input("总碳水(g)", value=st.session_state.get('total_c', None), placeholder="必填", key="tc")
-total_p = c3.number_input("总蛋白(g)", value=st.session_state.get('total_p', None), placeholder="必填", key="tp")
-total_f = c4.number_input("总脂肪(g)", value=st.session_state.get('total_f', None), placeholder="必填", key="tf")
+st.subheader("🏁 今日摄入数据汇总")
+col1, col2, col3, col4 = st.columns(4)
+tk = col1.number_input("总热量(kcal)", value=st.session_state.get('total_k', None), placeholder="必填", key="tk")
+tc = col2.number_input("总碳水(g)", value=st.session_state.get('total_c', None), placeholder="必填", key="tc")
+tp = col3.number_input("总蛋白(g)", value=st.session_state.get('total_p', None), placeholder="必填", key="tp")
+tf = col4.number_input("总脂肪(g)", value=st.session_state.get('total_f', None), placeholder="必填", key="tf")
 
-# --- 4. 实时预算看板 ---
+# --- 5. 实时剩余预算 ---
 st.divider()
-cur_c, cur_p, cur_f = nz(total_c), nz(total_p), nz(total_f)
-rem_c, rem_p, rem_f = targets['c_target'] - cur_c, targets['p_target'] - cur_p, targets['f_max'] - cur_f
+cur_c, cur_p, cur_f = nz(tc), nz(tp), nz(tf)
+rem_c, rem_p, rem_f = c_target_final - cur_c, p_gram - cur_p, f_gram - cur_f
 
 m1, m2, m3 = st.columns(3)
-m1.metric("碳水剩余", f"{rem_c:.1f}g", delta=f"目标 {targets['c_target']:.0f}", delta_color="inverse")
-m2.metric("蛋白剩余", f"{rem_p:.1f}g", delta=f"目标 {targets['p_target']:.0f}")
-m3.metric("脂肪剩余", f"{rem_f:.1f}g", delta=f"上限 {targets['f_max']:.0f}", delta_color="inverse")
+m1.metric("碳水剩余", f"{rem_c:.1f}g", f"目标 {c_target_final:.0f}g", delta_color="inverse")
+m2.metric("蛋白剩余", f"{rem_p:.1f}g", f"目标 {p_gram:.0f}g")
+m3.metric("脂肪剩余", f"{rem_f:.1f}g", f"上限 {f_gram:.0f}g", delta_color="inverse")
 
-# --- 5. 存档与删除逻辑 ---
-if st.button("💾 保存该日数据 (覆盖/新建)"):
-    if cur_c == 0 and cur_p == 0:
-        st.error("请先输入有效摄入量数据。")
+# --- 6. 存档与管理 ---
+target_date = st.date_input("存档日期", date.today())
+if st.button("💾 保存/覆盖该日记录"):
+    new_row = {
+        "日期": str(target_date), "总热量": nz(tk), "碳水": cur_c, "蛋白质": cur_p, 
+        "脂肪": cur_f, "碳水目标": c_target_final, "系数": f"{final_coeff:.2f}x", "缺口": deficit
+    }
+    df_new = pd.DataFrame([new_row])
+    if os.path.isfile('diet_log.csv'):
+        old_df = pd.read_csv('diet_log.csv')
+        old_df = old_df[old_df['日期'] != str(target_date)]
+        final_df = pd.concat([old_df, df_new], ignore_index=True)
     else:
-        new_row = {
-            "日期": str(target_date), "总热量": nz(total_k), "碳水": cur_c, 
-            "蛋白质": cur_p, "脂肪": cur_f, "碳水目标": targets['c_target'], 
-            "系数": f"{targets['actual_coeff']:.1f}x"
-        }
-        df_new = pd.DataFrame([new_row])
-        
-        if os.path.isfile('diet_log.csv'):
-            old_df = pd.read_csv('diet_log.csv')
-            # 如果日期已存在，先删除旧的那一行再添加
-            old_df = old_df[old_df['日期'] != str(target_date)]
-            final_df = pd.concat([old_df, df_new], ignore_index=True)
-        else:
-            final_df = df_new
-            
-        final_df.sort_values(by="日期", ascending=False, inplace=True)
-        final_df.to_csv('diet_log.csv', index=False)
-        st.success(f"【{target_date}】的数据已保存/更新！")
-        # 清除当前 Session 缓存
-        for key in ['total_k', 'total_c', 'total_p', 'total_f']:
-            if key in st.session_state: del st.session_state[key]
+        final_df = df_new
+    final_df.sort_values(by="日期", ascending=False).to_csv('diet_log.csv', index=False)
+    st.success(f"【{target_date}】记录已更新！")
 
-# --- 6. 历史记录管理 (彻底删除版) ---
 st.divider()
 st.header("📖 历史记录管理")
 if os.path.isfile('diet_log.csv'):
-    history_df = pd.read_csv('diet_log.csv')
-    st.write("💡 操作说明：直接修改数值，或选中左侧框按 Delete 键删除行，最后必须点击下方按钮生效。")
-    
-    # 获取编辑后的 Dataframe
-    edited_df = st.data_editor(history_df, num_rows="dynamic", use_container_width=True, key="history_editor")
-    
-    if st.button("🔥 同步修改并彻底保存"):
-        # 将编辑后的结果直接覆盖原 CSV 文件
+    edited_df = st.data_editor(pd.read_csv('diet_log.csv'), num_rows="dynamic", use_container_width=True)
+    if st.button("🔥 彻底同步修改"):
         edited_df.to_csv('diet_log.csv', index=False)
-        st.success("云端 CSV 文件已重写，数据已彻底更新！")
+        st.success("数据已彻底同步！")
         st.rerun()
-else:
-    st.info("尚无记录，开始你的第一次存档吧。")
